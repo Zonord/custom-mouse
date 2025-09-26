@@ -67,7 +67,29 @@ void IRAM_ATTR motionISR() {
 int8_t convTwosComp(uint8_t b) {
     return (b & 0x80) ? -((~b + 1) & 0xFF) : b;
 }
+class MicroTimer {
+private:
+    unsigned long startTime;
+    
+public:
+    void start() {
+        startTime = micros();
+    }
+    
+    unsigned long stop() {
+        return micros() - startTime;
+    }
+    
+    void stopAndPrint(const char* message = "") {
+        unsigned long duration = micros() - startTime;
+        Serial.print(message);
+        Serial.print(": ");
+        Serial.print(duration);
+        Serial.println(" мкс");
+    }
+};
 
+MicroTimer timer;
 // ================= ESP-NOW ================
 void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status){
     // Минимальный лог для скорости
@@ -108,7 +130,9 @@ void espnowTask(void *parameter){
     // Основной цикл отправки
     mouse_data_t ev;
     for(;;){
+    
         if(xQueueReceive(mouseQueue, &ev, portMAX_DELAY) == pdTRUE){
+            timer.start();
             ev.timestamp = micros();
             
             esp_err_t res = esp_now_send(receiverAddress, (uint8_t*)&ev, sizeof(ev));
@@ -117,8 +141,15 @@ void espnowTask(void *parameter){
             } else {
                 Serial.printf("[SEND] %s\n", esp_err_to_name(res));
             }
+               unsigned long duration = timer.stop();
+    
+    Serial.print("Текущее выполнениe ESPNOW: ");
+    Serial.print(duration);
+    Serial.println(" мкс");
         }
+ 
     }
+    
 }
 
 // ============ setup / loop ============
@@ -162,6 +193,7 @@ void setup(){
 
 void loop(){
     if (motionFlag){
+         timer.start();
         motionFlag = false;
         int8_t dx = 0, dy = 0;
         
@@ -177,6 +209,10 @@ void loop(){
             if (xQueueSend(mouseQueue, &ev, 0) != pdTRUE) {
                 drop_count++;
             }
+              unsigned long duration = timer.stop();
+                Serial.print("Текущее выполнениe опроса сенсора : ");
+    Serial.print(duration);
+    Serial.println(" мкс");
         }
     }
 
@@ -188,9 +224,9 @@ void loop(){
                      packet_count, drop_count, uxQueueSpacesAvailable(mouseQueue));
     }
 
-    delayMicroseconds(500);  // Быстрый опрос
+    delayMicroseconds(300);  
 }
-// ============ SPI functions (как у тебя) ============
+
 void adns_com_begin() { digitalWrite(PIN_CS, LOW); delayMicroseconds(1); }
 void adns_com_end()   { delayMicroseconds(1); digitalWrite(PIN_CS, HIGH); }
 void adns_write_reg(uint8_t reg, uint8_t val) {
@@ -211,7 +247,7 @@ uint8_t adns_read_reg(uint8_t reg) {
 }
 
 void set_high_performance_mode() {
-    // Оставил именно те записи, что были у тебя
+  
     adns_write_reg(0x7F, 0x05);
     adns_write_reg(0x51, 0x40);
     adns_write_reg(0x53, 0x40);
