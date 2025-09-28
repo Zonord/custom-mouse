@@ -12,8 +12,9 @@
 // ================= USER CONFIG =================
 #define CPI_DEFAULT       400
 #define ENABLE_CGM        1
-#define BURST_MODE        0
+#define BURST_MODE        0 //не работает пока 
 #define ESPNOW_CHANNEL    1
+#define STATS             1
 // ===============================================
 
 // Пины сенсора
@@ -132,7 +133,7 @@ void espnowTask(void *parameter){
     for(;;){
     
         if(xQueueReceive(mouseQueue, &ev, portMAX_DELAY) == pdTRUE){
-            timer.start();
+    ///timer.start();
             ev.timestamp = micros();
             
             esp_err_t res = esp_now_send(receiverAddress, (uint8_t*)&ev, sizeof(ev));
@@ -141,11 +142,11 @@ void espnowTask(void *parameter){
             } else {
                 Serial.printf("[SEND] %s\n", esp_err_to_name(res));
             }
-               unsigned long duration = timer.stop();
+    ///unsigned long duration = timer.stop();
     
-    Serial.print("Текущее выполнениe ESPNOW: ");
-    Serial.print(duration);
-    Serial.println(" мкс");
+    ///Serial.print("Текущее выполнениe ESPNOW: ");
+    ///Serial.print(duration);
+    ///Serial.println(" мкс");
         }
  
     }
@@ -193,7 +194,7 @@ void setup(){
 
 void loop(){
     if (motionFlag){
-         timer.start();
+    //timer.start();
         motionFlag = false;
         int8_t dx = 0, dy = 0;
         
@@ -209,22 +210,24 @@ void loop(){
             if (xQueueSend(mouseQueue, &ev, 0) != pdTRUE) {
                 drop_count++;
             }
-              unsigned long duration = timer.stop();
-                Serial.print("Текущее выполнениe опроса сенсора : ");
-    Serial.print(duration);
-    Serial.println(" мкс");
+
+    //unsigned long duration = timer.stop();
+    //Serial.print("Текущее выполнениe опроса сенсора : ");
+    //Serial.print(duration);
+    //Serial.println(" мкс");
         }
     }
 
     // Статистика раз в 10 секунд вместо 1000
     static uint32_t lastTs = 0;
+    #if STATS 
     if (millis() - lastTs > 10000) {
         lastTs = millis();
         Serial.printf("Sent: %lu, Drops: %lu, Free: %d\n", 
                      packet_count, drop_count, uxQueueSpacesAvailable(mouseQueue));
     }
-
-    delayMicroseconds(300);  
+    #endif
+    delayMicroseconds(550);  
 }
 
 void adns_com_begin() { digitalWrite(PIN_CS, LOW); delayMicroseconds(1); }
