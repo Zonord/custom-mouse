@@ -10,7 +10,7 @@
 #include "freertos/queue.h"
 
 // ================= USER CONFIG =================
-#define CPI_DEFAULT       400
+#define CPI_DEFAULT       800
 #define ENABLE_CGM        1
 #define BURST_MODE        0 //не работает пока 
 #define ESPNOW_CHANNEL    1
