@@ -185,7 +185,7 @@ void setup(){
         Serial.println("Failed to create queue");
         while(1) delay(1000);
     }
-
+    
     // Запускаем задачу ESP-NOW с высоким приоритетом
     xTaskCreatePinnedToCore(espnowTask, "espnow", 4096, NULL, 3, NULL, 1);
 
