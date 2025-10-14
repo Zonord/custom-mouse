@@ -25,6 +25,10 @@
 #define PIN_RESET 6
 #define PIN_MOT   1
 
+// Пины кнопок
+#define BUTTON_1  12
+#define BUTTON_2  11
+
 SPIClass SPI_Adns(HSPI);
 
 // PAW3395 регистры — ПЕРЕМЕСТИЛ В НАЧАЛО
@@ -43,7 +47,6 @@ SPIClass SPI_Adns(HSPI);
 // ================= ESP-NOW =================
 static uint8_t receiverAddress[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
-
 typedef struct __attribute__((packed)) {
     int8_t dx;
     int8_t dy;
@@ -54,10 +57,15 @@ typedef struct __attribute__((packed)) {
 // ============ globals ============
 volatile bool motionFlag = false;
 static QueueHandle_t mouseQueue = NULL;
-static const size_t QUEUE_DEPTH =2;  // Уменьшил для скорости
+static const size_t QUEUE_DEPTH = 2;  // Уменьшил для скорости
 
 static uint32_t packet_count = 0;
 static uint32_t drop_count = 0;
+
+// Состояние кнопок
+static uint8_t lastButtonState = 0;
+static uint32_t lastDebounceTime = 0;
+static const uint32_t DEBOUNCE_DELAY = 10;
 
 // ============ ISR ============
 void IRAM_ATTR motionISR() {
@@ -68,6 +76,7 @@ void IRAM_ATTR motionISR() {
 int8_t convTwosComp(uint8_t b) {
     return (b & 0x80) ? -((~b + 1) & 0xFF) : b;
 }
+
 class MicroTimer {
 private:
     unsigned long startTime;
@@ -91,6 +100,7 @@ public:
 };
 
 MicroTimer timer;
+
 // ================= ESP-NOW ================
 void onDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status){
     // Минимальный лог для скорости
@@ -131,9 +141,7 @@ void espnowTask(void *parameter){
     // Основной цикл отправки
     mouse_data_t ev;
     for(;;){
-    
         if(xQueueReceive(mouseQueue, &ev, portMAX_DELAY) == pdTRUE){
-    ///timer.start();
             ev.timestamp = micros();
             
             esp_err_t res = esp_now_send(receiverAddress, (uint8_t*)&ev, sizeof(ev));
@@ -142,20 +150,32 @@ void espnowTask(void *parameter){
             } else {
                 Serial.printf("[SEND] %s\n", esp_err_to_name(res));
             }
-    ///unsigned long duration = timer.stop();
-    
-    ///Serial.print("Текущее выполнениe ESPNOW: ");
-    ///Serial.print(duration);
-    ///Serial.println(" мкс");
         }
- 
+    }
+}
+
+// ============ Чтение состояния кнопок ============
+uint8_t readButtons() {
+    uint8_t buttonState = 0;
+    
+    // Читаем состояние кнопок с инверсией (так как подтяжка к VCC)
+    if (!digitalRead(BUTTON_1)) {
+        buttonState |= 0x01;  // Кнопка 1 нажата
+    }
+    if (!digitalRead(BUTTON_2)) {
+        buttonState |= 0x02;  // Кнопка 2 нажата
     }
     
+    return buttonState;
 }
 
 // ============ setup / loop ============
 void setup(){
     Serial.begin(115200);
+    
+    // Инициализация пинов кнопок с внутренней подтяжкой к VCC
+    pinMode(BUTTON_1, INPUT_PULLUP);
+    pinMode(BUTTON_2, INPUT_PULLUP);
     
     // Быстрая инициализация сенсора
     pinMode(PIN_CS, OUTPUT);
@@ -193,8 +213,11 @@ void setup(){
 }
 
 void loop(){
+    // Всегда читаем состояние кнопок в каждом цикле
+    uint8_t currentButtonState = readButtons();
+    
+    // Обработка движения мыши
     if (motionFlag){
-    //timer.start();
         motionFlag = false;
         int8_t dx = 0, dy = 0;
         
@@ -204,17 +227,26 @@ void loop(){
             read_motion_data(dx, dy);
         #endif
 
-        if (dx != 0 || dy != 0) {
-            mouse_data_t ev = {dx, dy, 0, micros()};  // Быстрая инициализация
+        // Отправляем ВСЕГДА, даже если dx=0 и dy=0, но есть движение кнопок
+        // или если есть любое движение/изменение кнопок
+        if (dx != 0 || dy != 0 || currentButtonState != lastButtonState) {
+            mouse_data_t ev = {dx, dy, currentButtonState, micros()};
             
             if (xQueueSend(mouseQueue, &ev, 0) != pdTRUE) {
                 drop_count++;
+            } else {
+                lastButtonState = currentButtonState; // Обновляем только при успешной отправке
             }
-
-    //unsigned long duration = timer.stop();
-    //Serial.print("Текущее выполнениe опроса сенсора : ");
-    //Serial.print(duration);
-    //Serial.println(" мкс");
+        }
+    }
+    // Если нет движения, но изменилось состояние кнопок - тоже отправляем
+    else if (currentButtonState != lastButtonState) {
+        mouse_data_t ev = {0, 0, currentButtonState, micros()};
+        
+        if (xQueueSend(mouseQueue, &ev, 0) != pdTRUE) {
+            drop_count++;
+        } else {
+            lastButtonState = currentButtonState;
         }
     }
 
@@ -223,13 +255,12 @@ void loop(){
     #if STATS 
     if (millis() - lastTs > 10000) {
         lastTs = millis();
-        Serial.printf("Sent: %lu, Drops: %lu, Free: %d\n", 
-                     packet_count, drop_count, uxQueueSpacesAvailable(mouseQueue));
+        Serial.printf("Sent: %lu, Drops: %lu, Free: %d, Buttons: 0x%02X\n", 
+                     packet_count, drop_count, uxQueueSpacesAvailable(mouseQueue), lastButtonState);
     }
     #endif
     delayMicroseconds(550);  
 }
-
 void adns_com_begin() { digitalWrite(PIN_CS, LOW); delayMicroseconds(1); }
 void adns_com_end()   { delayMicroseconds(1); digitalWrite(PIN_CS, HIGH); }
 void adns_write_reg(uint8_t reg, uint8_t val) {
@@ -250,7 +281,6 @@ uint8_t adns_read_reg(uint8_t reg) {
 }
 
 void set_high_performance_mode() {
-  
     adns_write_reg(0x7F, 0x05);
     adns_write_reg(0x51, 0x40);
     adns_write_reg(0x53, 0x40);
