@@ -175,7 +175,8 @@ void setup(){
     
     // Инициализация пинов кнопок с внутренней подтяжкой к VCC
     pinMode(BUTTON_1, INPUT_PULLUP);
-    pinMode(BUTTON_2, INPUT_PULLUP);
+    pinMode(BUTTON_2, INPUT_PULLUP);grades and break systems
+==> 
     
     // Быстрая инициализация сенсора
     pinMode(PIN_CS, OUTPUT);
