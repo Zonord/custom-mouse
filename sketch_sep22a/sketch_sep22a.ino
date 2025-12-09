@@ -15,6 +15,7 @@
 #define BURST_MODE        0 //не работает пока 
 #define ESPNOW_CHANNEL    1
 #define STATS             1
+static const uint32_t DEBOUNCE_DELAY = 50/50;
 // ===============================================
 
 // Пины сенсора
@@ -65,7 +66,7 @@ static uint32_t drop_count = 0;
 // Состояние кнопок
 static uint8_t lastButtonState = 0;
 static uint32_t lastDebounceTime = 0;
-static const uint32_t DEBOUNCE_DELAY = 10;
+
 
 // ============ ISR ============
 void IRAM_ATTR motionISR() {
@@ -137,7 +138,7 @@ void espnowTask(void *parameter){
     }
 
     Serial.println("ESP-NOW task ready");
-
+   
     // Основной цикл отправки
     mouse_data_t ev;
     for(;;){
@@ -157,17 +158,28 @@ void espnowTask(void *parameter){
 // ============ Чтение состояния кнопок ============
 uint8_t readButtons() {
     uint8_t buttonState = 0;
-    
-    // Читаем состояние кнопок с инверсией (так как подтяжка к VCC)
-    if (!digitalRead(BUTTON_1)) {
-        buttonState |= 0x01;  // Кнопка 1 нажата
-    }
-    if (!digitalRead(BUTTON_2)) {
-        buttonState |= 0x02;  // Кнопка 2 нажата
-    }
-    
+    uint8_t b1 = 0;
+    uint8_t b2 = 0;
+    for (int i = 0;i++;i>50){
+    delayMicroseconds(DEBOUNCE_DELAY);
+    if (!digitalRead(BUTTON_1)){
+        b1++;
+                            };
+    if (!digitalRead(BUTTON_2)){
+        b2++;
+                             };
+
+   };
+
+    if (b1 > 30){
+        buttonState |= 0x01;
+                            };
+    if (b2 > 30){
+        buttonState |= 0x02;   
+                        };
     return buttonState;
 }
+
 
 // ============ setup / loop ============
 void setup(){
@@ -175,8 +187,7 @@ void setup(){
     
     // Инициализация пинов кнопок с внутренней подтяжкой к VCC
     pinMode(BUTTON_1, INPUT_PULLUP);
-    pinMode(BUTTON_2, INPUT_PULLUP);grades and break systems
-==> 
+    pinMode(BUTTON_2, INPUT_PULLUP);
     
     // Быстрая инициализация сенсора
     pinMode(PIN_CS, OUTPUT);
@@ -262,6 +273,7 @@ void loop(){
     #endif
     delayMicroseconds(550);  
 }
+
 void adns_com_begin() { digitalWrite(PIN_CS, LOW); delayMicroseconds(1); }
 void adns_com_end()   { delayMicroseconds(1); digitalWrite(PIN_CS, HIGH); }
 void adns_write_reg(uint8_t reg, uint8_t val) {
