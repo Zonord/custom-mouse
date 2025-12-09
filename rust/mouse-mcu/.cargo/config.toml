@@ -1,0 +1,9 @@
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+# Дополнительные настройки для ESP32-C3
+[unstable]
+build-std = ["core", "alloc", "compiler_builtins"]
+
+[build-std-features]
+compiler-builtins-mem = []
